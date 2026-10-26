@@ -146,17 +146,9 @@ def add_application_absolute_metrics_relative_order(df_faults, df_address_ranges
     gc.collect()
     return df_address_ranges
 
-@plotter
-def print_relative_metrics_relative_order(df_faults, df_prefetch, df_evictions, df_address_ranges, output_state, plot_end, output_dir=None):
-    printt("configuring print")
-    output_path = ""
-    if output_dir is None:
-        output_path = output_state.get_output_path("metrics_stats_relative")
-    else:
-        output_path = output_state.get_output_path(output_dir)
-
+def prepare_relative_faults(df_faults, df_address_ranges, psize):
     #Remove any allocations < 512MB
-    df_address_ranges = prune_allocs(df_address_ranges, output_state.psize)
+    df_address_ranges = prune_allocs(df_address_ranges, psize)
 
     #Add allocation for each faddr
     printt("Adding allocation column")
@@ -177,8 +169,10 @@ def print_relative_metrics_relative_order(df_faults, df_prefetch, df_evictions, 
     df_faults.index.name = 'fault_group'
     #df_faults['fault_group'] = df_faults.index // BATCH_SIZE
     printt("Done adding columns")
+    return df_faults, df_address_ranges
 
-    
+
+def compute_relative_metrics(df_faults, df_address_ranges):
     printt("Absolute metrics")
    
     #Init stat columns
@@ -267,12 +261,60 @@ def print_relative_metrics_relative_order(df_faults, df_prefetch, df_evictions, 
         del rel_view
         del group_data
         gc.collect()
+    return df_address_ranges
 
-    
+
+@plotter
+def print_relative_metrics_relative_order(df_faults, df_prefetch, df_evictions, df_address_ranges, output_state, plot_end, output_dir=None):
+    printt("configuring print")
+    output_path = ""
+    if output_dir is None:
+        output_path = output_state.get_output_path("metrics_stats_relative")
+    else:
+        output_path = output_state.get_output_path(output_dir)
+
+    df_faults, df_address_ranges = prepare_relative_faults(df_faults, df_address_ranges, output_state.psize)
+    df_address_ranges = compute_relative_metrics(df_faults, df_address_ranges)
+
     # Write the entire DataFrame to a text file
     df_address_ranges.to_csv(output_path, index=False)
 
     printt(df_address_ranges)
+    printt(f"Stats saved to {output_path}")
+
+
+@plotter
+def print_relative_metrics_relative_order_per_kernel(df_faults, df_prefetch, df_evictions, df_address_ranges, output_state, plot_end, output_dir=None):
+    # Same metrics as print_relative_metrics_relative_order, computed separately for each kernel name
+    # (all launches of a kernel aggregated). Rows are allocation x kernel; faults logged between kernels
+    # are reported under kernel "between".
+    printt("configuring print")
+    output_path = ""
+    if output_dir is None:
+        output_path = output_state.get_output_path("metrics_stats_relative_kernel")
+    else:
+        output_path = output_state.get_output_path(f"{output_dir}_kernel")
+
+    if 'kernel' not in df_faults.columns:
+        raise ValueError("log has no kernel markers; collect it with KERNEL_MARKERS = True")
+
+    df_faults, df_address_ranges = prepare_relative_faults(df_faults, df_address_ranges, output_state.psize)
+
+    kernel_metrics = []
+    for kernel, df_kernel_faults in df_faults.groupby('kernel', observed=True):
+        printt(f"Processing kernel {kernel}")
+        df_kernel_ranges = compute_relative_metrics(df_kernel_faults.copy(), df_address_ranges.copy())
+        df_kernel_ranges.insert(0, 'kernel', kernel)
+        df_kernel_ranges.insert(1, 'launches', df_kernel_faults['kernel_id'].nunique())
+        df_kernel_ranges.insert(2, 'kernel_faults', len(df_kernel_faults))
+        kernel_metrics.append(df_kernel_ranges)
+        del df_kernel_faults
+        gc.collect()
+
+    df_kernel_metrics = pd.concat(kernel_metrics, ignore_index=True)
+    df_kernel_metrics.to_csv(output_path, index=False)
+
+    printt(df_kernel_metrics)
     printt(f"Stats saved to {output_path}")
 
 

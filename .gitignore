@@ -26,3 +26,4 @@ tealeaf.cuda
 !run
 *.txt
 *.o_binary
+*.so

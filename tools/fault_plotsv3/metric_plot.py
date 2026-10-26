@@ -25,6 +25,7 @@ def main():
     parser.add_argument("file_path", type=str, help="Path to the binary file")
     parser.add_argument("--plot_end", "-e", action='store_true', help="Plot the end of the address range as well")
     parser.add_argument("--output_dir", "-o", type=str, default=None, help="Optional: Specify an output dir")
+    parser.add_argument("--config", "-c", type=str, default="metric_test_plot_config.json", help="Optional: JSON file choosing which metric functions run")
     args = parser.parse_args()
 
     hostname, df_faults, df_prefetch, df_evictions, df_address_ranges = parse_fault_data(args.file_path)
@@ -33,10 +34,10 @@ def main():
     output_state = get_output_state_from_path_hostname(args.file_path, hostname)
 
     try:
-        with open("metric_test_plot_config.json", 'r') as file:
+        with open(args.config, 'r') as file:
             config = json.load(file)
     except FileNotFoundError:
-        raise Exception(f"Fatal Error: The file {config_file} was not found.")
+        raise Exception(f"Fatal Error: The file {args.config} was not found.")
     except json.JSONDecodeError:
         raise Exception("Fatal Error: The file is not a valid JSON.")
    

@@ -10,6 +10,10 @@ SYSLOG_EXE=f"log"
 WARMUP_DIR=f"{ROOT}/benchmarks/scriptsv3"
 WARMUP_EXE="warmup"
 WARMUP_ENABLED=False
+# per-kernel attribution: inject tools/kernel_marker into each benchmark (serializes and syncs every launch);
+# build it first with make in that directory
+KERNEL_MARKERS = False
+KERNEL_MARKER_LIB = f"{ROOT}/tools/kernel_marker/libkernel_marker.so"
 
 KERNEL_VERSION = "x86_64-555.42.02"
 KERNEL_VARIANT = "faults-new"
@@ -20,5 +24,6 @@ DO_NOPF = False
 PSIZES = ["75", "100", "125", "150", "175"] #Percentage of VRAM_SIZE
 BENCHMARKS = ['bfs-worst', 'sgemm', 'FDTD-2D', 'stream', 'GRAMSCHM',  'cg', 'tealeaf']
 
-PSIZES_SUBSET = ["100", "125"] #Percentage of VRAM_SIZE
-BENCHMARKS_SUBSET = ['bfs-worst', 'sgemm', 'FDTD-2D', 'stream']
+KERNEL_MARKERS = True
+PSIZES_SUBSET = ["100", "125"]
+BENCHMARKS_SUBSET = ['tealeaf', 'cg']
