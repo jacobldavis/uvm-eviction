@@ -1330,33 +1330,36 @@ ssize_t hpcs_fault_log_write_short(const struct hpcs_fault_record_short* record)
     return 0;
 }
 
-// only for debug, not maintained
-/*
+// user space brackets each kernel launch with a begin/end marker so records can be split per kernel.
+// assumes one kernel runs at a time; everything logged between a begin and its end belongs to that kernel.
 static ssize_t hpcs_write(struct file *filep, const char __user *buffer, size_t len, loff_t *offset) {
-    // this one is annoying
-    // it basically checks if writing this data will make readp == writep
-    // in other words, if we write this data, the buffer will be full.
-    // In this case, we're going to return an error, because we've already decided
-    // that readp == writep means buffer is empty. That means we'll always waste one slot,
-    // but who cares that's like 8 bytes
-    rmb();
-    if (unlikely(hpcs_circ_buff.readp == ((hpcs_circ_buff.writep + 1) % HPCS_BUFFER_CAP)))
+    struct hpcs_kernel_marker marker;
+    ssize_t ret;
+
+    if (len != sizeof(marker))
+        return -EINVAL;
+    if (copy_from_user(&marker, buffer, sizeof(marker)))
     {
-        printk("hpcs: write buffer full\n");
-        return -EAGAIN;
-    }
-    if(copy_from_user(&hpcs_circ_buff.records[hpcs_circ_buff.writep], buffer, sizeof(struct hpcs_fault_record)))
-    {
-        printk("hpcs: copy_from_user failed for some reason\n");
+        printk("%s: copy_from_user failed for kernel marker\n", HPCS_DEV_NAME);
         return -EFAULT;
     }
-    //printk("hpcs: succesfully copied data %lu from userspace\n", hpcs_circ_buff.records[hpcs_circ_buff.writep].faddr);
-    hpcs_circ_buff.writep = (hpcs_circ_buff.writep + 1) % HPCS_BUFFER_CAP;
-    //printk("hpcs: writep changed to %lu\n", hpcs_circ_buff.writep);
-    wmb();
-    return 0;
+    if (marker.type != HPCS_KERNEL_BEGIN && marker.type != HPCS_KERNEL_END)
+        return -EINVAL;
+
+    if (hpcs_log_short)
+    {
+        struct hpcs_fault_record_short r = {HPCS_ENCODE_ID(marker.kernel_id, marker.type)};
+        ret = hpcs_fault_log_write_short(&r);
+    }
+    else
+    {
+        // no timestamp: ktime_get is GPL-only and nvidia-uvm inherits nvidia.ko's proprietary taint, so the
+        // module would fail to load. Kernels are assigned by record order, which needs no clock.
+        struct hpcs_fault_record r = {.faddr = marker.kernel_id, .record_type = marker.type};
+        ret = hpcs_fault_log_write(&r);
+    }
+    return ret ? ret : len;
 }
-*/
 
 static int hpcs_open(struct inode *inodep, struct file *filep) {
     printk(KERN_INFO "%s: Device has been opened\n", HPCS_DEV_NAME);
@@ -1372,6 +1375,7 @@ static int hpcs_release(struct inode *inodep, struct file *filep) {
 static struct file_operations hpcs_fops = {
     .open = hpcs_open,
     .read = hpcs_read,
+    .write = hpcs_write,
     .release = hpcs_release,
 };
 

@@ -5,7 +5,9 @@ typedef enum
     HPCS_FAULT = 0,
     HPCS_PREFETCH,
     HPCS_EVICTION,
-    HPCS_ADDR_RANGE
+    HPCS_ADDR_RANGE,
+    HPCS_KERNEL_BEGIN,
+    HPCS_KERNEL_END
 } hpcs_record_types_t;
 
 #define HPCS_DEV_NAME "hpcs_logger"
@@ -47,7 +49,16 @@ struct hpcs_fault_record
     unsigned char gpc_id;
     unsigned char channel_id;
     unsigned char ve_id;
-    // valid types: fault/prefetch/eviction/addr range; 0/1/2/3. Assuming all 4 types are present in the data,
-    // this is the ordering from most to least likely.
+    // valid types: fault/prefetch/eviction/addr range/kernel begin/kernel end; 0/1/2/3/4/5. Assuming all
+    // types are present in the data, this is the ordering from most to least likely.
     unsigned char record_type;
+};
+
+// written by user space to /dev/hpcs_logger to bracket a kernel launch. The driver logs it as a record
+// with faddr = kernel_id; in short mode kernel_id is encoded with HPCS_ENCODE_ID, so it must fit in 56 bits.
+struct hpcs_kernel_marker
+{
+    unsigned long kernel_id;
+    // HPCS_KERNEL_BEGIN or HPCS_KERNEL_END
+    unsigned char type;
 };
