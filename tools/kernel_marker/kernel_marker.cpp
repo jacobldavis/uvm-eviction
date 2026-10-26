@@ -1,18 +1,3 @@
-// CUPTI injection library that brackets every kernel launch with hpcs begin/end markers, so faults,
-// prefetches, and evictions can be attributed per kernel without modifying the application.
-//
-// Usage:
-//   CUDA_INJECTION64_PATH=<path>/libkernel_marker.so HPCS_KERNEL_MAP=<logdir>/<bench>_kernels.csv ./app
-//
-// Hooks driver API launches, so it also catches launches from static cudart and from libraries
-// (cuBLAS, cuSPARSE, cuFFT). Every launch is serialized and synchronized on both sides, which enforces
-// the one-kernel-at-a-time assumption: work issued before the launch finishes before the begin marker,
-// and the kernel itself finishes before the end marker. This perturbs timing, so use it for fault
-// collection runs only. Not supported: CUDA graph launches and launches inside stream capture.
-//
-// Kernel ids are a per-process launch sequence; the id -> name mapping is written as CSV to
-// $HPCS_KERNEL_MAP (default: hpcs_kernels.csv in the working directory).
-
 #include <cuda.h>
 #include <cupti.h>
 #include <fcntl.h>
@@ -47,7 +32,6 @@ static const CUpti_CallbackId launch_cbids[] = {
 static CUpti_SubscriberHandle subscriber;
 static int marker_fd = -1;
 static FILE* kernel_map = NULL;
-// held from launch enter to launch exit so launches from multiple host threads cannot overlap
 static std::mutex launch_mutex;
 static unsigned long next_kernel_id = 0;
 static unsigned long current_kernel_id;

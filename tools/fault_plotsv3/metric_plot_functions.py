@@ -285,9 +285,6 @@ def print_relative_metrics_relative_order(df_faults, df_prefetch, df_evictions, 
 
 @plotter
 def print_relative_metrics_relative_order_per_kernel(df_faults, df_prefetch, df_evictions, df_address_ranges, output_state, plot_end, output_dir=None):
-    # Same metrics as print_relative_metrics_relative_order, computed separately for each kernel name
-    # (all launches of a kernel aggregated). Rows are allocation x kernel; faults logged between kernels
-    # are reported under kernel "between".
     printt("configuring print")
     output_path = ""
     if output_dir is None:

@@ -1330,8 +1330,6 @@ ssize_t hpcs_fault_log_write_short(const struct hpcs_fault_record_short* record)
     return 0;
 }
 
-// user space brackets each kernel launch with a begin/end marker so records can be split per kernel.
-// assumes one kernel runs at a time; everything logged between a begin and its end belongs to that kernel.
 static ssize_t hpcs_write(struct file *filep, const char __user *buffer, size_t len, loff_t *offset) {
     struct hpcs_kernel_marker marker;
     ssize_t ret;
@@ -1353,8 +1351,6 @@ static ssize_t hpcs_write(struct file *filep, const char __user *buffer, size_t 
     }
     else
     {
-        // no timestamp: ktime_get is GPL-only and nvidia-uvm inherits nvidia.ko's proprietary taint, so the
-        // module would fail to load. Kernels are assigned by record order, which needs no clock.
         struct hpcs_fault_record r = {.faddr = marker.kernel_id, .record_type = marker.type};
         ret = hpcs_fault_log_write(&r);
     }

@@ -151,10 +151,8 @@ class Experiment:
             #command = ["taskset", "-c", "4,5", f'./{self.benchmark_exe}'] + self.benchmark_args
             env = os.environ.copy()
             if config.KERNEL_MARKERS:
-                # libcuda silently ignores a missing injection library, so fail here instead
                 assert os.path.exists(config.KERNEL_MARKER_LIB), f"{config.KERNEL_MARKER_LIB} not built"
                 env["CUDA_INJECTION64_PATH"] = config.KERNEL_MARKER_LIB
-                # fault_parsing.py looks for the kernel name map next to the klog under this name
                 env["HPCS_KERNEL_MAP"] = f"{logdir}/{self.benchmark}_kernels.csv"
             p = subprocess.Popen(command, stdout=subprocess.PIPE, env=env)
             print(f"Running command {command}")

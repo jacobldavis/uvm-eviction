@@ -75,7 +75,6 @@ def extract_hostname(path):
 
 
 TWO_MB = 2 * 1024 * 1024
-# record types from drivers/include/hpcs_types.h
 HPCS_KERNEL_BEGIN, HPCS_KERNEL_END = 4, 5
 KERNEL_BETWEEN = "between"
 
@@ -102,14 +101,10 @@ def get_kernel_spans(df_data):
     df_kernels = pd.DataFrame({'kernel_id': begins['faddr'].values, 'begin': begins.index.values})
     df_ends = pd.DataFrame({'kernel_id': ends['faddr'].values, 'end': ends.index.values})
     df_kernels = df_kernels.merge(df_ends, on='kernel_id', how='left')
-    # a kernel without an end marker (e.g. benchmark killed by timeout) runs to the end of the log
-    # (merge leaves 'end' as float, so use a sentinel that survives the round trip)
     df_kernels['end'] = df_kernels['end'].fillna(df_data.index.max() + 1).astype(np.int64)
     return df_kernels.sort_values('begin').reset_index(drop=True)
 
 def add_kernel_columns(df, df_kernels, kernel_names):
-    # records are in log order, so a record belongs to the last kernel that began before it,
-    # provided that kernel has not ended yet
     positions = df.index.values
     k = np.searchsorted(df_kernels['begin'].values, positions, side='right') - 1
     k_clipped = np.clip(k, 0, None)
@@ -189,12 +184,10 @@ def parse_fault_data(file_path):
     print(f"found {len(df_kernels)} kernel launches")
 
     print("filtering dataframes")
-    # Filter and delete entries for both modes
     df_faults = df_data[df_data['record_type'] == 0]
     df_prefetch = df_data[df_data['record_type'] == 1]
     df_evictions = df_data[df_data['record_type'] == 2]
 
-    # logs without markers keep the old per-application columns only
     if not df_kernels.empty:
         print("assigning records to kernels")
         kernel_names = read_kernel_names(file_path)

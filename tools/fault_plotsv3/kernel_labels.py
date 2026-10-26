@@ -19,8 +19,6 @@ KERNEL_BETWEEN = "between"
 
 
 def mim_label(allocs):
-    """allocs: one row per allocation, sorted by label. Returns (streaming, label string)."""
-    tmp = allocs.reset_index(drop=True).copy()
     tmp['size'] = tmp['size'] / 100.0
     streaming = app_is_streaming(tmp)
     if streaming:
@@ -29,7 +27,6 @@ def mim_label(allocs):
     else:
         m_prediction = (tmp['d_mean_1000'] > NONSTREAM_D_MIGRATE) & (tmp['dr_intra_mean_1000'] > NONSTREAM_DR_MIGRATE)
         value = tmp[['tr_median_1000', 'ts_rel_median_1000']].max(axis=1)
-    # knapsack needs positive values; same shift rule as classify_d_with()
     min_item = value.min()
     if min_item < 0:
         value = value + 1.001 * abs(float(min_item))
