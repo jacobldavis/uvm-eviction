@@ -19,6 +19,7 @@ KERNEL_BETWEEN = "between"
 
 
 def mim_label(allocs):
+    tmp = allocs.reset_index(drop=True).copy()
     tmp['size'] = tmp['size'] / 100.0
     streaming = app_is_streaming(tmp)
     if streaming:
