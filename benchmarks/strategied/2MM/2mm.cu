@@ -171,15 +171,18 @@ void mm2_cpu(DATA_TYPE* A, DATA_TYPE* B, DATA_TYPE* C, DATA_TYPE* D, DATA_TYPE* 
 }
 
 
-void mm2Cuda(DATA_TYPE* A_gpu, DATA_TYPE* B_gpu, DATA_TYPE* C_gpu, DATA_TYPE* D_gpu, DATA_TYPE* E_gpu)
+// pointers by reference: a per-kernel 'd' swaps them between launches
+void mm2Cuda(DATA_TYPE*& A_gpu, DATA_TYPE*& B_gpu, DATA_TYPE*& C_gpu, DATA_TYPE*& D_gpu, DATA_TYPE*& E_gpu, AccessPolicy& acp)
 {
 	double t_start, t_end;
 	dim3 block(DIM_THREAD_BLOCK_X, DIM_THREAD_BLOCK_Y);
 	dim3 grid1((size_t)ceil( ((float)NJ) / ((float)block.x) ), (size_t)ceil( ((float)NI) / ((float)block.y)) );
 	dim3 grid2((size_t)ceil( ((float)NL) / ((float)block.x) ), (size_t)ceil( ((float)NI) / ((float)block.y)) );
 	t_start = rtclock();
+	acp.applyKernelPolicy(0);
 	mm2_kernel1<<<grid1,block>>>(A_gpu, B_gpu, C_gpu, PSIZE);
 	cudaDeviceSynchronize();
+	acp.applyKernelPolicy(1);
 	mm2_kernel2<<<grid2,block>>>(C_gpu, D_gpu, E_gpu, PSIZE);
 	cudaDeviceSynchronize();
 	t_end = rtclock();
@@ -243,13 +246,15 @@ int main(int argc, char** argv)
 
 	AccessPolicy acp;
 	acp.setAllocationPolicy((void**)&A_gpu, sizeof(DATA_TYPE) * NI * NK, 0, argc, argv);
-	acp.setAllocationPolicy((void**)&B_gpu, sizeof(DATA_TYPE) * NK * NJ, 0, argc, argv);
-	acp.setAllocationPolicy((void**)&C_gpu, sizeof(DATA_TYPE) * NI * NJ, 0, argc, argv);
-	acp.setAllocationPolicy((void**)&D_gpu, sizeof(DATA_TYPE) * NJ * NL, 0, argc, argv);
-	acp.setAllocationPolicy((void**)&E_gpu, sizeof(DATA_TYPE) * NI * NL, 0, argc, argv);
+	acp.setAllocationPolicy((void**)&B_gpu, sizeof(DATA_TYPE) * NK * NJ, 1, argc, argv);
+	acp.setAllocationPolicy((void**)&C_gpu, sizeof(DATA_TYPE) * NI * NJ, 2, argc, argv);
+	acp.setAllocationPolicy((void**)&D_gpu, sizeof(DATA_TYPE) * NJ * NL, 3, argc, argv);
+	acp.setAllocationPolicy((void**)&E_gpu, sizeof(DATA_TYPE) * NI * NL, 4, argc, argv);
+	// first kernel's placement happens before timing, like a whole-run policy
+	acp.applyKernelPolicy(0);
 
 	
-	mm2Cuda(A_gpu, B_gpu, C_gpu, D_gpu, E_gpu);
+	mm2Cuda(A_gpu, B_gpu, C_gpu, D_gpu, E_gpu, acp);
 
 
 	if(cpu){

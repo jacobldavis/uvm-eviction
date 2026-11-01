@@ -284,7 +284,7 @@ else
 	@echo "Sample is ready - all dependencies have been met"
 endif
 
-matrixMul2.o: matrixMul2.cu
+matrixMul2.o: matrixMul2.cu accpol.h
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 matrixMul2: matrixMul2.o

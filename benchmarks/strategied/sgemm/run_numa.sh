@@ -1,5 +1,5 @@
 #!/bin/bash
-logbase=sgemm
+logbase=sgemm${PERF_TAG:+_$PERF_TAG}
 exe=./matrixMul2
 matsizes=$(python3 genSizes.py $1)
 cmd="$exe $matsizes ${@:2}"

@@ -1,4 +1,4 @@
-ROOT = "/home/jld9/uvm-eviction"
+ROOT = "/home/najones/uvm-eviction"
 
 BENCHDIR = f"{ROOT}/benchmarks"
 DRIVER_DIR=f"{ROOT}/drivers"

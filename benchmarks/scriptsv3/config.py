@@ -24,6 +24,5 @@ DO_NOPF = False
 PSIZES = ["75", "100", "125", "150", "175"] #Percentage of VRAM_SIZE
 BENCHMARKS = ['bfs-worst', 'sgemm', 'FDTD-2D', 'stream', 'GRAMSCHM',  'cg', 'tealeaf']
 
-KERNEL_MARKERS = True
-PSIZES_SUBSET = ["100", "125"]
-BENCHMARKS_SUBSET = ['tealeaf', 'cg']
+PSIZES_SUBSET = ["100", "125"] #Percentage of VRAM_SIZE
+BENCHMARKS_SUBSET = ['bfs-worst', 'sgemm', 'FDTD-2D', 'stream']

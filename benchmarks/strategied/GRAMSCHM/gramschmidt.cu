@@ -168,7 +168,8 @@ __global__ void gramschmidt_kernel3(DATA_TYPE *a, DATA_TYPE *r, DATA_TYPE *q, in
 }
 
 
-void gramschmidtCuda(DATA_TYPE* A_gpu, DATA_TYPE* R_gpu, DATA_TYPE* Q_gpu, double timeout)
+// pointers by reference: a per-kernel 'd' swaps them between launches
+void gramschmidtCuda(DATA_TYPE*& A_gpu, DATA_TYPE*& R_gpu, DATA_TYPE*& Q_gpu, double timeout, AccessPolicy& acp)
 {
 	double t_start, t_end;
 	size_t k;
@@ -181,10 +182,13 @@ void gramschmidtCuda(DATA_TYPE* A_gpu, DATA_TYPE* R_gpu, DATA_TYPE* Q_gpu, doubl
 	t_start = rtclock();
 	for (k = 0; k < N; k++)
 	{
+		acp.applyKernelPolicy(0);
 		gramschmidt_kernel1<<<gridKernel1,block>>>(A_gpu, R_gpu, Q_gpu, k, PSIZE);
 		CUDA_CHECK(cudaDeviceSynchronize());
+		acp.applyKernelPolicy(1);
 		gramschmidt_kernel2<<<gridKernel2,block>>>(A_gpu, R_gpu, Q_gpu, k, PSIZE);
 		CUDA_CHECK(cudaDeviceSynchronize());
+		acp.applyKernelPolicy(2);
 		gramschmidt_kernel3<<<gridKernel3,block>>>(A_gpu, R_gpu, Q_gpu, k, PSIZE);
 		CUDA_CHECK(cudaDeviceSynchronize());
 		
@@ -250,9 +254,11 @@ int main(int argc, char *argv[])
 	acp.setAllocationPolicy((void**)&A_gpu, sizeof(DATA_TYPE) * M * N, 0, argc, argv);
 	acp.setAllocationPolicy((void**)&R_gpu, sizeof(DATA_TYPE) * M * N, 1, argc, argv);
 	acp.setAllocationPolicy((void**)&Q_gpu, sizeof(DATA_TYPE) * M * N, 2, argc, argv);
+	// first kernel's placement happens before timing, like a whole-run policy
+	acp.applyKernelPolicy(0);
 
 	
-	gramschmidtCuda(A_gpu, R_gpu, Q_gpu, timeout);
+	gramschmidtCuda(A_gpu, R_gpu, Q_gpu, timeout, acp);
 	
 	if(cpu){
         A = (DATA_TYPE*)malloc(M*N*sizeof(DATA_TYPE));

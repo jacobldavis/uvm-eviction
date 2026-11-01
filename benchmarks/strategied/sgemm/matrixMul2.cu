@@ -206,6 +206,8 @@ long MatrixMultiply(int argc, char **argv,
     acp.setAllocationPolicy((void**)&h_A, mem_size_A, 0, argc, argv);
     acp.setAllocationPolicy((void**)&h_B, mem_size_B, 1, argc, argv);
     acp.setAllocationPolicy((void**)&h_C, mem_size_C, 2, argc, argv);
+    // one kernel: "-p xyz:" places it through the per-kernel path, a control for "-p xyz"
+    acp.applyKernelPolicy(0);
 
 //    checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_A), mem_size_A));
 
