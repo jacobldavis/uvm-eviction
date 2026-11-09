@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
-"""
-kernel_transitions.py - how often the per-kernel MIM label changes from one kernel launch to the next.
-
-Walks each run's launch order (<app>_kernels.csv, written by tools/kernel_marker next to the _klog) and looks
-up each launch's per-kernel label in kernel_labels.py's output. Launches of kernels without a label (no
-faults on a significant allocation, or left out by --min-kernel-faults) are skipped, since they would not
-change placement. A boundary is two consecutive labeled launches of different kernels; it is a label change
-if the two kernels disagree on any allocation both of them touched. Boundaries with no allocation in common
-are counted separately as disjoint: their labels cannot disagree, but a per-kernel policy would still move
-different allocations there.
-
-Usage (from tools/fault_plotsv3, after kernel_labels.py):
-    python3 kernel_transitions.py kernel_labels_tealeaf_cg.csv [-o kernel_transitions]
-"""
+# How often the per-kernel label changes between consecutive kernel launches
+# usage: python3 kernel_transitions.py kernel_labels_tealeaf_cg.csv [-o kernel_transitions]
 import argparse
 import glob
 from collections import Counter
@@ -28,7 +16,7 @@ def launch_order(app, psize):
         raise FileNotFoundError(f"expected one kernel map for {app} {psize}%, found {paths}")
     with open(paths[0]) as file:
         next(file)
-        # kernel ids are the launch sequence; names may contain commas, so split once
+        # names may contain commas
         return [line.rstrip('\n').split(',', 1)[1] for line in file]
 
 

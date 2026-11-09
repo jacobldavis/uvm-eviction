@@ -49,13 +49,12 @@ struct hpcs_fault_record
     unsigned char gpc_id;
     unsigned char channel_id;
     unsigned char ve_id;
-    // valid types: fault/prefetch/eviction/addr range/kernel begin/kernel end; 0/1/2/3/4/5. Assuming all
-    // types are present in the data, this is the ordering from most to least likely.
+    // valid types: fault/prefetch/eviction/addr range/kernel begin/kernel end; 0/1/2/3/4/5.
+    // this is the ordering from most to least likely.
     unsigned char record_type;
 };
 
-// written by user space to /dev/hpcs_logger to bracket a kernel launch. The driver logs it as a record
-// with faddr = kernel_id; in short mode kernel_id is encoded with HPCS_ENCODE_ID, so it must fit in 56 bits.
+// written to /dev/hpcs_logger around each kernel launch; kernel_id must fit in 56 bits for short mode
 struct hpcs_kernel_marker
 {
     unsigned long kernel_id;

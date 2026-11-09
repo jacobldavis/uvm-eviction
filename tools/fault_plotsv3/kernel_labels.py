@@ -8,6 +8,8 @@ import subprocess
 import numpy as np
 import pandas as pd
 
+import heapq
+
 from parse_metrics_relative import app_is_streaming, knapsack
 
 CAPACITY = 0.99
@@ -16,6 +18,33 @@ NONSTREAM_D_MIGRATE = 0.02
 NONSTREAM_DR_MIGRATE = 1
 UNTOUCHED = '.'
 KERNEL_BETWEEN = "between"
+
+
+def knapsack_fixed(df, cap, cost_str, val_str, threshold=0.02):
+    # same as parse_metrics_relative.knapsack, but the last item can be picked
+    costs = df[cost_str].values
+    values = df[val_str].values
+    low = [i for i in range(len(costs)) if costs[i] < threshold]
+    remaining = cap - sum(costs[i] for i in low)
+    items = sorted([(i, costs[i], values[i]) for i in range(len(costs)) if i not in low], key=lambda x: -x[2] / x[1])
+    if not items or remaining <= 0:
+        return low
+    best_value, best = sum(values[i] for i in low), low
+    heap = [(-best_value, 0, 0, best_value, low)]
+    while heap:
+        neg, level, cost, value, solution = heapq.heappop(heap)
+        if value > best_value:
+            best_value, best = value, solution
+        if level == len(items) or cost > remaining:
+            continue
+        i, c, v = items[level]
+        if cost + c <= remaining:
+            heapq.heappush(heap, (neg - v, level + 1, cost + c, value + v, solution + [i]))
+        heapq.heappush(heap, (neg, level + 1, cost, value, solution))
+    return best
+
+
+KNAPSACK = knapsack
 
 
 def mim_label(allocs):
@@ -34,7 +63,7 @@ def mim_label(allocs):
     if min_item <= 0:
         value = value + 0.001
     tmp['new'] = value
-    on_device = set(knapsack(tmp, CAPACITY, 'size', 'new'))
+    on_device = set(KNAPSACK(tmp, CAPACITY, 'size', 'new'))
     strategy = ['d' if i in on_device else ('m' if m_prediction[i] else 'h') for i in range(len(tmp))]
     return streaming, ''.join(strategy)
 
@@ -103,7 +132,11 @@ def main():
     parser.add_argument('--min-kernel-faults', type=int, default=0,
                         help="leave kernels with fewer faults out of the summary (they are still listed)")
     parser.add_argument('-o', '--output', default='kernel_labels', help="output prefix for <prefix>.csv and <prefix>_summary.csv")
+    parser.add_argument('--fixed-knapsack', action='store_true', help="use the corrected knapsack instead of the paper's")
     args = parser.parse_args()
+    if args.fixed_knapsack:
+        global KNAPSACK
+        KNAPSACK = knapsack_fixed
 
     root = f'../../figs/{args.host}'
     rows = []

@@ -50,12 +50,12 @@ static void CUPTIAPI launch_callback(void* userdata, CUpti_CallbackDomain domain
     if (info->callbackSite == CUPTI_API_ENTER)
     {
         launch_mutex.lock();
-        // finish outstanding async work so its faults are logged before this kernel begins
+        // sync so earlier faults land before the begin marker
         cuCtxSynchronize();
         current_kernel_id = next_kernel_id++;
         if (kernel_map)
         {
-            // flush every line so the map survives the benchmark being killed by timeout
+            // flush in case the run is killed by timeout
             fprintf(kernel_map, "%lu,%s\n", current_kernel_id, info->symbolName ? info->symbolName : "unknown");
             fflush(kernel_map);
         }
@@ -63,7 +63,7 @@ static void CUPTIAPI launch_callback(void* userdata, CUpti_CallbackDomain domain
     }
     else
     {
-        // wait for the kernel so all of its faults are logged before the end marker
+        // sync so all of the kernel's faults land before the end marker
         cuCtxSynchronize();
         write_marker(current_kernel_id, HPCS_KERNEL_END);
         launch_mutex.unlock();

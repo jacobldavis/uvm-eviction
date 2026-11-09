@@ -79,7 +79,7 @@ HPCS_KERNEL_BEGIN, HPCS_KERNEL_END = 4, 5
 KERNEL_BETWEEN = "between"
 
 def read_kernel_names(file_path):
-    # map written by the kernel marker shim next to the log: <bench>_klog -> <bench>_kernels.csv
+    # <bench>_kernels.csv sits next to <bench>_klog
     if not file_path.endswith("_klog"):
         return {}
     map_path = file_path[:-len("_klog")] + "_kernels.csv"
@@ -90,7 +90,7 @@ def read_kernel_names(file_path):
     with open(map_path) as file:
         next(file)
         for line in file:
-            # split once; names are mangled symbols but don't trust them to be comma free
+            # names may contain commas
             kernel_id, name = line.rstrip("\n").split(",", 1)
             names[int(kernel_id)] = name
     return names
@@ -111,8 +111,7 @@ def add_kernel_columns(df, df_kernels, kernel_names):
     inside = (k >= 0) & (positions < df_kernels['end'].values[k_clipped])
     kernel_ids = np.where(inside, df_kernels['kernel_id'].values[k_clipped], -1).astype(np.int32)
     df['kernel_id'] = kernel_ids
-    # categorical name column: launches of the same kernel share a category, so grouping by name
-    # aggregates them; slot 0 is records that fall between kernels
+    # category 0 is records between kernels
     names = [KERNEL_BETWEEN] + [kernel_names.get(kid, f"kernel_{kid}") for kid in df_kernels['kernel_id']]
     categories = list(dict.fromkeys(names))
     name_codes = np.array([categories.index(name) for name in names])

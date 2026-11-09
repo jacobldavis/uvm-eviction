@@ -10,8 +10,7 @@ SYSLOG_EXE=f"log"
 WARMUP_DIR=f"{ROOT}/benchmarks/scriptsv3"
 WARMUP_EXE="warmup"
 WARMUP_ENABLED=False
-# per-kernel attribution: inject tools/kernel_marker into each benchmark (serializes and syncs every launch);
-# build it first with make in that directory
+# log kernel boundaries with tools/kernel_marker (build it first; serializes launches)
 KERNEL_MARKERS = False
 KERNEL_MARKER_LIB = f"{ROOT}/tools/kernel_marker/libkernel_marker.so"
 
