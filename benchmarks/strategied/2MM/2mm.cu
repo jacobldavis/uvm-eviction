@@ -171,7 +171,7 @@ void mm2_cpu(DATA_TYPE* A, DATA_TYPE* B, DATA_TYPE* C, DATA_TYPE* D, DATA_TYPE* 
 }
 
 
-// pointers by reference: a per-kernel 'd' swaps them between launches
+// by reference since per-kernel 'd' swaps the pointers
 void mm2Cuda(DATA_TYPE*& A_gpu, DATA_TYPE*& B_gpu, DATA_TYPE*& C_gpu, DATA_TYPE*& D_gpu, DATA_TYPE*& E_gpu, AccessPolicy& acp)
 {
 	double t_start, t_end;
@@ -250,7 +250,7 @@ int main(int argc, char** argv)
 	acp.setAllocationPolicy((void**)&C_gpu, sizeof(DATA_TYPE) * NI * NJ, 2, argc, argv);
 	acp.setAllocationPolicy((void**)&D_gpu, sizeof(DATA_TYPE) * NJ * NL, 3, argc, argv);
 	acp.setAllocationPolicy((void**)&E_gpu, sizeof(DATA_TYPE) * NI * NL, 4, argc, argv);
-	// first kernel's placement happens before timing, like a whole-run policy
+	// place the first kernel before timing
 	acp.applyKernelPolicy(0);
 
 	

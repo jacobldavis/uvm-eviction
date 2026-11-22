@@ -1,6 +1,6 @@
 #!/bin/bash -xe
 
-logbase=tealeaf
+logbase=tealeaf${PERF_TAG:+_$PERF_TAG}
 exe=./tealeaf
 cmd="$exe ${@:2}"
 out="$exe $1 ${@:2}"

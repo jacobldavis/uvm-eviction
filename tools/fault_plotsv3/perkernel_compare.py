@@ -2,7 +2,6 @@
 # Per-kernel optimum vs whole-run optimum vs HELM+MIM labels, from perkernel.py's runs
 # usage: python3 perkernel_compare.py kernel_labels_perkernel.csv [--apps ...] [--psizes ...] [--host cuda-host]
 import argparse
-import glob
 import os
 import re
 import socket
@@ -11,30 +10,22 @@ import numpy as np
 import pandas as pd
 
 import config
-from kernel_labels import metric_file
+from kernel_labels import allocation_order, metric_file
 
 # kernel name prefix -> kernel index in launch order
 KERNELS = {
     '2MM': {'mm2_kernel1': 0, 'mm2_kernel2': 1},
     'GRAMSCHM': {'gramschmidt_kernel1': 0, 'gramschmidt_kernel2': 1, 'gramschmidt_kernel3': 2},
     'sgemm': {'': 0},   # single cuBLAS kernel (warmup is skipped)
+    'ATAX': {'atax_kernel1': 0, 'atax_kernel2': 1},
+    'BICG': {'bicg_kernel1': 0, 'bicg_kernel2': 1},
+    'MVT': {'mvt_kernel1': 0, 'mvt_kernel2': 1},
     # phase 0: setup, phase 1: timestep loop; zero_buffer runs before any policy is set
     'tealeaf': {'zero_buffer': None, 'set_chunk': 0, '': 1},
 }
-RECORD = np.dtype([('faddr', 'u8'), ('timestamp', 'u8'), ('num_instances', 'u2'), ('pad', 'u1', (11,)),
-                   ('record_type', 'u1'), ('_padding', 'u2')])
-
-
-def allocation_order(app, psize):
-    # managed allocation base addresses, in allocation order
-    path, = glob.glob(f'../../benchmarks/default/{app}/log_*_{psize}_{app}/{app}_klog')
-    with open(path, 'rb') as file:
-        mode, hostname_len = file.read(2)
-        file.read(hostname_len)
-        if mode != 0:
-            raise ValueError(f"{path}: short-mode logs are not supported here")
-        records = np.fromfile(file, dtype=RECORD)
-    return list(records['faddr'][records['record_type'] == 3])
+# policy indices of the labeled allocations where small ones aren't labeled (the runtime packs them into a
+# shared 2 MiB range); the rest are under 2% of GPU memory, which MIM always pins
+LABELED = {'ATAX': [0], 'BICG': [0], 'MVT': [0]}
 
 
 def to_policy(app, psize, label, n_allocs, host):
@@ -43,11 +34,12 @@ def to_policy(app, psize, label, n_allocs, host):
     metrics = metrics.sort_values('label').reset_index(drop=True)
     # drops the CUDA runtime's own 2 MiB managed range
     order = [base for base in allocation_order(app, psize) if base in set(metrics['base_address'])]
-    if len(order) != n_allocs:
-        raise ValueError(f"{app} {psize}%: {len(order)} labeled allocations in the log, expected {n_allocs}")
-    policy = ['m'] * n_allocs
+    index = LABELED.get(app, list(range(n_allocs)))
+    if len(order) != len(index):
+        raise ValueError(f"{app} {psize}%: {len(order)} labeled allocations in the log, expected {len(index)}")
+    policy = ['d' if app in LABELED else 'm'] * n_allocs
     for letter, base in zip(label, metrics['base_address']):
-        policy[order.index(base)] = 'm' if letter == '.' else letter
+        policy[index[order.index(base)]] = 'm' if letter == '.' else letter
     return ''.join(policy)
 
 

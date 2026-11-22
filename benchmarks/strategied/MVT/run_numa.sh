@@ -1,5 +1,5 @@
 #!/bin/bash
-logbase=mvt
+logbase=mvt${PERF_TAG:+_$PERF_TAG}
 exe=./mvt.exe
 cmd="$exe $1 0 ${@:2}"
 out="$exe $1 0 ${@:2}"

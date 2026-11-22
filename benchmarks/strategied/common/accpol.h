@@ -8,7 +8,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 // CUDA runtime
@@ -49,18 +52,29 @@ private:
 	std::size_t aoi_size = 0;
 	double perc = -1.0;
 
-	// Per-kernel policies: "-p <kernel 0>:<kernel 1>:..." gives one d/m/h string per kernel, applied by
-	// applyKernelPolicy() before each launch. A policy without ':' is the usual whole-run policy.
+	//Per-kernel policies: -p <kernel 0>:<kernel 1>:..., one d/m/h string per kernel
 	struct KernelPolicyAlloc { void **ptr; void *managed; void *device; std::size_t size; char state; };
 	std::vector<std::string> kernel_policies;
 	std::vector<KernelPolicyAlloc> kernel_allocs;
 	double transition_seconds = 0.0;
+
+	//-p a:b@S switches to b S seconds after the first placement, while the first kernel runs (m/h only)
+	double switch_after = -1.0;
+	std::thread switch_thread;
+	std::mutex switch_mutex;
+	std::condition_variable switch_cv;
+	bool switch_done = false, stopping = false;
 
 	bool parseKernelPolicies(int argc, char** argv){
 	  if (!kernel_policies.empty()) return true;
 	  for (int i = 1; i + 1 < argc; i++){
 	    if (strcmp(argv[i], "-p") == 0 && strchr(argv[i+1], ':')){
 	      std::string all(argv[i+1]), policy;
+	      std::size_t at = all.find('@');
+	      if (at != std::string::npos){
+	        switch_after = atof(all.c_str() + at + 1);
+	        all = all.substr(0, at);
+	      }
 	      for (char c : all + ":"){
 	        if (c != ':') { policy += c; continue; }
 	        if (!policy.empty()) kernel_policies.push_back(policy);
@@ -70,6 +84,29 @@ private:
 	    }
 	  }
 	  return false;
+	}
+
+	void delayedSwitch(){
+	  std::unique_lock<std::mutex> lock(switch_mutex);
+	  if (switch_cv.wait_for(lock, std::chrono::duration<double>(switch_after), [this]{ return stopping || switch_done; }))
+	    return;
+	  //no sync: the first kernel is still running
+	  auto start = std::chrono::steady_clock::now();
+	  const std::string &policy = kernel_policies[1];
+	  for (std::size_t i = 0; i < kernel_allocs.size(); i++){
+	    KernelPolicyAlloc &alloc = kernel_allocs[i];
+	    if (policy[i] == alloc.state) continue;
+	    if (policy[i] == 'd' || alloc.state == 'd'){
+	      std::cout << "Mid-kernel switch only supports m/h; allocation " << i << " unchanged.\n";
+	      continue;
+	    }
+	    setAdvice(alloc.managed, alloc.size, policy[i]);
+	    alloc.state = policy[i];
+	  }
+	  switch_done = true;
+	  double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+	  transition_seconds += took;
+	  fprintf(stdout, "Mid-kernel switch after %0.3lfs took %0.6lfs\n", switch_after, took);
 	}
 
 	void setAdvice(void *a, std::size_t size, char policy){
@@ -83,22 +120,35 @@ private:
 	}
 public:
 	~AccessPolicy(){
+	  if (switch_thread.joinable()){
+	    {
+	      std::lock_guard<std::mutex> lock(switch_mutex);
+	      stopping = true;
+	    }
+	    switch_cv.notify_all();
+	    switch_thread.join();
+	  }
 	  if (!kernel_policies.empty())
 	    fprintf(stdout, "Kernel policy transitions: %0.6lfs\n", transition_seconds);
 	}
 
-	// Move each allocation to the given kernel's policy. 'd' copies it into a cudaMalloc buffer, frees the
-	// managed allocation and swaps the pointer, exactly like the whole-run 'd'; leaving 'd' copies it into a
-	// new managed allocation. Call before every launch.
+	//Move allocations to the given kernel's policy; call before each launch
 	void applyKernelPolicy(int kernel){
 	  if (kernel_policies.empty()) return;
 	  if ((std::size_t)kernel >= kernel_policies.size() || kernel_policies[kernel].size() < kernel_allocs.size()){
 	    std::cout << "Kernel policy for kernel " << kernel << " is missing or too short.\n";
 	    exit(1);
 	  }
+	  //finish the previous kernel before changing its placement (without the lock, so a
+	  //mid-kernel switch can still happen while it runs)
+	  CUDA_CHECK(cudaDeviceSynchronize());
+	  std::unique_lock<std::mutex> lock(switch_mutex);
+	  //already switched mid-kernel; otherwise switch here and cancel the timer
+	  if (kernel == 1 && switch_done) return;
+	  if (kernel == 1) switch_done = true;
 	  const std::string &policy = kernel_policies[kernel];
 	  auto start = std::chrono::steady_clock::now();
-	  // leave the device first so its buffers free room for allocations entering it
+	  //leave the device first to free space
 	  for (std::size_t i = 0; i < kernel_allocs.size(); i++){
 	    KernelPolicyAlloc &alloc = kernel_allocs[i];
 	    if (alloc.state == 'd' && policy[i] != 'd'){
@@ -118,10 +168,8 @@ public:
 	        std::cout << "Kernel policy '" << policy << "' does not fit on the device (allocation " << i << ").\n";
 	        exit(2);
 	      }
-	      // HostToDevice like the whole-run 'd': Default would treat the source as managed memory and could
-	      // move its pages onto the GPU first
+	      //same copy and free as the whole-run 'd'
 	      CUDA_CHECK(cudaMemcpy(alloc.device, alloc.managed, alloc.size, cudaMemcpyHostToDevice));
-	      // a managed copy left behind can hold GPU memory
 	      CUDA_CHECK(cudaFree(alloc.managed));
 	      *alloc.ptr = alloc.device;
 	    } else if (target == 'h' || target == 'm'){
@@ -134,6 +182,8 @@ public:
 	  }
 	  CUDA_CHECK(cudaDeviceSynchronize());
 	  transition_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+	  if (kernel == 0 && switch_after >= 0 && !switch_thread.joinable())
+	    switch_thread = std::thread(&AccessPolicy::delayedSwitch, this);
 	}
 
 	void setMemPressure(std::size_t size){
@@ -193,7 +243,7 @@ public:
 	//Set the allocation policy based on cl flags
 	void setAllocationPolicy(void **a, std::size_t size, int alloc_num, int argc, char** argv) {
 	  if (parseKernelPolicies(argc, argv)){
-	    // per-kernel mode: only record the allocation; applyKernelPolicy() places it
+	    //per-kernel mode: placed later by applyKernelPolicy
 	    if (kernel_allocs.size() <= (std::size_t)alloc_num) kernel_allocs.resize(alloc_num + 1);
 	    kernel_allocs[alloc_num] = {a, *a, nullptr, size, 'm'};
 	    return;

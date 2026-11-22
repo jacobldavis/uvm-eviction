@@ -155,7 +155,8 @@ void bicg_cpu(DATA_TYPE* A, DATA_TYPE* r, DATA_TYPE* s, DATA_TYPE* p, DATA_TYPE*
 }
 
 
-void bicgCuda(DATA_TYPE* A_gpu, DATA_TYPE* r_gpu, DATA_TYPE* s_gpu, DATA_TYPE* p_gpu, DATA_TYPE* q_gpu)
+// by reference since per-kernel 'd' swaps the pointers
+void bicgCuda(DATA_TYPE*& A_gpu, DATA_TYPE*& r_gpu, DATA_TYPE*& s_gpu, DATA_TYPE*& p_gpu, DATA_TYPE*& q_gpu, AccessPolicy& acp)
 {
 	double t_start, t_end;
 
@@ -164,8 +165,10 @@ void bicgCuda(DATA_TYPE* A_gpu, DATA_TYPE* r_gpu, DATA_TYPE* s_gpu, DATA_TYPE* p
 	dim3 grid2((size_t)(ceil( ((float)NX) / ((float)block.x) )), 1);
 
 	t_start = rtclock();
+	acp.applyKernelPolicy(0);
 	bicg_kernel1<<< grid1, block >>>(A_gpu, r_gpu, s_gpu, PSIZE);
 	cudaDeviceSynchronize();
+	acp.applyKernelPolicy(1);
 	bicg_kernel2<<< grid2, block >>>(A_gpu, p_gpu, q_gpu, PSIZE);
 	cudaDeviceSynchronize();
 	t_end = rtclock();
@@ -232,8 +235,10 @@ int main(int argc, char** argv)
 	acp.setAllocationPolicy((void**)&s_gpu, sizeof(DATA_TYPE) * NY, 2, argc, argv);
 	acp.setAllocationPolicy((void**)&p_gpu, sizeof(DATA_TYPE) * NY, 3, argc, argv);
 	acp.setAllocationPolicy((void**)&q_gpu, sizeof(DATA_TYPE) * NX, 4, argc, argv);
+	// place the first kernel before timing
+	acp.applyKernelPolicy(0);
 
-	bicgCuda(A_gpu, r_gpu, s_gpu, p_gpu, q_gpu);
+	bicgCuda(A_gpu, r_gpu, s_gpu, p_gpu, q_gpu, acp);
 
 	
 	if(cpu){

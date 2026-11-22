@@ -18,6 +18,8 @@ void run_kernel_initialise(
         Chunk* chunk, Settings* settings);
 void run_kernel_finalise(
         Chunk* chunk, Settings* settings);
+void run_apply_phase_policy(
+        Chunk* chunk, Settings* settings, int phase);
 
 // Solver-wide kernels
 void run_local_halos(

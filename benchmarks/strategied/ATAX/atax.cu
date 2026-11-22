@@ -138,7 +138,8 @@ void atax_cpu(DATA_TYPE* A, DATA_TYPE* x, DATA_TYPE* y, DATA_TYPE* tmp)
 }
 
 
-void ataxGpu(DATA_TYPE* A_gpu, DATA_TYPE* x_gpu, DATA_TYPE* y_gpu, DATA_TYPE* tmp_gpu)
+// by reference since per-kernel 'd' swaps the pointers
+void ataxGpu(DATA_TYPE*& A_gpu, DATA_TYPE*& x_gpu, DATA_TYPE*& y_gpu, DATA_TYPE*& tmp_gpu, AccessPolicy& acp)
 {
 	double t_start, t_end;
 
@@ -148,8 +149,10 @@ void ataxGpu(DATA_TYPE* A_gpu, DATA_TYPE* x_gpu, DATA_TYPE* y_gpu, DATA_TYPE* tm
 	dim3 grid2((size_t)(ceil( ((float)NY) / ((float)block.x) )), 1);
 
 	t_start = rtclock();
+	acp.applyKernelPolicy(0);
 	atax_kernel1<<< grid1, block >>>(A_gpu,x_gpu,tmp_gpu, PSIZE);
 	cudaDeviceSynchronize();
+	acp.applyKernelPolicy(1);
 	atax_kernel2<<< grid2, block >>>(A_gpu,y_gpu,tmp_gpu, PSIZE);
 	cudaDeviceSynchronize();
 	t_end = rtclock();
@@ -213,10 +216,12 @@ int main(int argc, char** argv)
 	acp.setAllocationPolicy((void**)&x_gpu, sizeof(DATA_TYPE) * NY, 1, argc, argv);
 	acp.setAllocationPolicy((void**)&y_gpu, sizeof(DATA_TYPE) * NY, 2, argc, argv);
 	acp.setAllocationPolicy((void**)&tmp_gpu, sizeof(DATA_TYPE) * NX, 3, argc, argv);
+	// place the first kernel before timing
+	acp.applyKernelPolicy(0);
 
 
 	
-	ataxGpu(A_gpu, x_gpu, y_gpu, tmp_gpu);
+	ataxGpu(A_gpu, x_gpu, y_gpu, tmp_gpu, acp);
 	
 	if(cpu){
 		t_start = rtclock();

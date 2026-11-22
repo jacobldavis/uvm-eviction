@@ -30,6 +30,14 @@ void set_access_policy(AccessPolicy * acp, void ** ptr, size_t size, int alloc_i
 }
 
 int alloc_index = 0;
+// shared by all allocations so per-phase policies keep their state
+AccessPolicy tealeaf_acp;
+
+// phase 0: setup, phase 1: timestep loop
+void apply_phase_policy(int phase)
+{
+    tealeaf_acp.applyKernelPolicy(phase);
+}
 
 // Allocates, and zeroes and individual buffer
 void allocate_device_buffer(double** a, int x, int y, int argc, char ** argv)
@@ -47,8 +55,7 @@ void allocate_device_buffer(double** a, int x, int y, int argc, char ** argv)
     check_errors(__LINE__, __FILE__);
     size_t size = x*y*sizeof(double);
     if(size > RELEVANT_SIZE){
-      AccessPolicy acp;
-      set_access_policy(&acp, (void**)a, x*y*sizeof(double), alloc_index++, argc, argv);
+      set_access_policy(&tealeaf_acp, (void**)a, x*y*sizeof(double), alloc_index++, argc, argv);
     }
 }
 
@@ -148,6 +155,8 @@ void kernel_initialise(
     allocate_device_buffer(cg_betas, settings->max_iters, 1, argc, argv);
     allocate_device_buffer(cheby_alphas, settings->max_iters, 1, argc, argv);
     allocate_device_buffer(cheby_betas, settings->max_iters, 1, argc, argv);
+    // place phase 0 before profiling starts
+    apply_phase_policy(0);
 }
 
 // Finalises the kernel

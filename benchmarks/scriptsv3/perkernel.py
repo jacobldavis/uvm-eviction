@@ -14,8 +14,14 @@ APPS = {
     '2MM':      {'allocs': 5, 'kernels': [{0, 1, 2}, {2, 3, 4}], 'switch_d': True},
     'GRAMSCHM': {'allocs': 3, 'kernels': [{0, 1}, {0, 1, 2}, {0, 1, 2}], 'switch_d': False},
     'sgemm':    {'allocs': 3, 'kernels': [{0, 1, 2}], 'switch_d': True, 'control': True},
-    # setup and timestep phases, --policies only; 16-19 are reduction buffers read on the host, can't be 'd'
-    'tealeaf':  {'allocs': 20, 'policies_only': True, 'host_read': {16, 17, 18, 19}},
+    # setup and timestep phases, --policies only (host-read allocations are in config.HOST_READ)
+    'tealeaf':  {'allocs': 20, 'policies_only': True},
+    'FDTD-2D':  {'allocs': 3, 'policies_only': True},
+    '3MM':      {'allocs': 7, 'policies_only': True},
+    # both kernels read the matrix (allocation 0), one by row and one by column; MVT only registers the matrix
+    'ATAX':     {'allocs': 4, 'kernels': [{0, 1, 3}, {0, 2, 3}], 'switch_d': True},
+    'BICG':     {'allocs': 5, 'kernels': [{0, 1, 2}, {0, 3, 4}], 'switch_d': True},
+    'MVT':      {'allocs': 1, 'kernels': [{0}, {0}], 'switch_d': True},
 }
 TIMEOUT_FACTOR = 1.25
 PERF_TAG = 'perkernel2'
@@ -94,6 +100,8 @@ def main():
     parser.add_argument('--policies', nargs='+', help="run only these policies (e.g. MIM labels), plus the all-m baseline")
     parser.add_argument('--plan', action='store_true',
                         help="print letters and runs left from results on disk, without running anything")
+    parser.add_argument('--skip-baseline', action='store_true',
+                        help="with --policies: don't rerun the all-m baseline; runs are cut at TIMEOUT instead")
     args = parser.parse_args()
 
     os.environ['PERF_TAG'] = PERF_TAG
@@ -125,11 +133,14 @@ def main():
                       f"{sum((psize_gb, p) not in results for p in policies)} not yet run")
                 continue
             # baseline sets the timeout for the rest
-            baseline_s = exp._run(False, psize, baseline, limit)
+            if args.policies and args.skip_baseline:
+                baseline_s = limit / TIMEOUT_FACTOR
+            else:
+                baseline_s = exp._run(False, psize, baseline, limit)
             if args.policies:
                 # always rerun named policies
                 for policy in args.policies:
-                    pinned_host_read = [i for phase in policy.rstrip(':').split(':') for i in APPS[app].get('host_read', ())
+                    pinned_host_read = [i for phase in policy.rstrip(':').split(':') for i in config.HOST_READ.get(app, ())
                                         if i < len(phase) and phase[i] == 'd']
                     if pinned_host_read:
                         print(f"skipping {policy}: allocations {sorted(set(pinned_host_read))} are read by the CPU and can't be 'd'")

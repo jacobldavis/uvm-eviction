@@ -5,11 +5,13 @@ import shutil
 import socket
 import subprocess
 
+import glob
+import heapq
+
 import numpy as np
 import pandas as pd
 
-import heapq
-
+import config
 from parse_metrics_relative import app_is_streaming, knapsack
 
 CAPACITY = 0.99
@@ -18,6 +20,8 @@ NONSTREAM_D_MIGRATE = 0.02
 NONSTREAM_DR_MIGRATE = 1
 UNTOUCHED = '.'
 KERNEL_BETWEEN = "between"
+RECORD = np.dtype([('faddr', 'u8'), ('timestamp', 'u8'), ('num_instances', 'u2'), ('pad', 'u1', (11,)),
+                   ('record_type', 'u1'), ('_padding', 'u2')])
 
 
 def knapsack_fixed(df, cap, cost_str, val_str, threshold=0.02):
@@ -44,10 +48,37 @@ def knapsack_fixed(df, cap, cost_str, val_str, threshold=0.02):
     return best
 
 
+def knapsack_dp(df, cap, cost_str, val_str, threshold=0.02, unit=0.0001):
+    # exact 0/1 knapsack over capacity in `unit` steps (the metric files' size precision);
+    # sizes round up so a pick never overfills
+    costs = df[cost_str].values
+    values = df[val_str].values
+    low = [i for i in range(len(costs)) if costs[i] < threshold]
+    rest = [i for i in range(len(costs)) if i not in low]
+    slots = int((cap - sum(costs[i] for i in low)) / unit + 1e-9)
+    if not rest or slots <= 0:
+        return low
+    weight = [int(np.ceil(costs[i] / unit - 1e-9)) for i in rest]
+    best = [0.0] * (slots + 1)
+    keep = [[False] * (slots + 1) for _ in rest]
+    for k, i in enumerate(rest):
+        for c in range(slots, weight[k] - 1, -1):
+            if best[c - weight[k]] + values[i] > best[c]:
+                best[c] = best[c - weight[k]] + values[i]
+                keep[k][c] = True
+    chosen, c = [], slots
+    for k in range(len(rest) - 1, -1, -1):
+        if keep[k][c]:
+            chosen.append(rest[k])
+            c -= weight[k]
+    return low + chosen
+
+
 KNAPSACK = knapsack
+EXCLUDE_HOST_READ = False
 
 
-def mim_label(allocs):
+def mim_label(allocs, pinnable=None):
     tmp = allocs.reset_index(drop=True).copy()
     tmp['size'] = tmp['size'] / 100.0
     streaming = app_is_streaming(tmp)
@@ -63,7 +94,9 @@ def mim_label(allocs):
     if min_item <= 0:
         value = value + 0.001
     tmp['new'] = value
-    on_device = set(KNAPSACK(tmp, CAPACITY, 'size', 'new'))
+    # allocations that can't be 'd' are left out of the knapsack
+    candidates = tmp if pinnable is None else tmp[np.asarray(pinnable)]
+    on_device = {candidates.index[i] for i in KNAPSACK(candidates.reset_index(drop=True), CAPACITY, 'size', 'new')}
     strategy = ['d' if i in on_device else ('m' if m_prediction[i] else 'h') for i in range(len(tmp))]
     return streaming, ''.join(strategy)
 
@@ -77,6 +110,26 @@ def metric_file(root, kind, app, psize):
     return os.path.join(directory, sorted(matches)[0]) if matches else None
 
 
+def allocation_order(app, psize):
+    # managed allocation base addresses, in allocation order
+    path, = glob.glob(f'../../benchmarks/default/{app}/log_*_{psize}_{app}/{app}_klog')
+    with open(path, 'rb') as file:
+        mode, hostname_len = file.read(2)
+        file.read(hostname_len)
+        if mode != 0:
+            raise ValueError(f"{path}: short-mode logs are not supported here")
+        records = np.fromfile(file, dtype=RECORD)
+    return list(records['faddr'][records['record_type'] == 3])
+
+
+def host_read_bases(app, psize, app_df):
+    # base addresses of the allocations in config.HOST_READ
+    if not EXCLUDE_HOST_READ or app not in config.HOST_READ:
+        return set()
+    order = [base for base in allocation_order(app, psize) if base in set(app_df['base_address'])]
+    return {order[i] for i in config.HOST_READ[app] if i < len(order)}
+
+
 def demangle(names):
     if not shutil.which('c++filt'):
         return names
@@ -87,7 +140,8 @@ def demangle(names):
 def compare(app, psize, app_df, kernel_df, min_kernel_faults):
     app_df = app_df.sort_values('label').reset_index(drop=True)
     labels = list(app_df['label'])
-    app_streaming, app_label = mim_label(app_df)
+    blocked = host_read_bases(app, psize, app_df)
+    app_streaming, app_label = mim_label(app_df, ~app_df['base_address'].isin(blocked))
     app_letter = dict(zip(labels, app_label))
 
     rows = []
@@ -96,7 +150,8 @@ def compare(app, psize, app_df, kernel_df, min_kernel_faults):
         touched = group['f_rel_mean_1'].notna()
         if not touched.any():
             continue
-        streaming, sub_label = mim_label(group[touched].reset_index())
+        sub = group[touched].reset_index()
+        streaming, sub_label = mim_label(sub, ~sub['base_address'].isin(blocked))
         letters = dict(zip(group.index[touched], sub_label))
         kernel_label = ''.join(letters.get(label, UNTOUCHED) for label in labels)
         differ = sum(letters[label] != app_letter[label] for label in letters)
@@ -133,10 +188,15 @@ def main():
                         help="leave kernels with fewer faults out of the summary (they are still listed)")
     parser.add_argument('-o', '--output', default='kernel_labels', help="output prefix for <prefix>.csv and <prefix>_summary.csv")
     parser.add_argument('--fixed-knapsack', action='store_true', help="use the corrected knapsack instead of the paper's")
+    parser.add_argument('--dp-knapsack', action='store_true', help="use the DP knapsack instead of the paper's")
+    parser.add_argument('--exclude-host-read', action='store_true', help="never pin the allocations in config.HOST_READ")
     args = parser.parse_args()
+    global KNAPSACK, EXCLUDE_HOST_READ
     if args.fixed_knapsack:
-        global KNAPSACK
         KNAPSACK = knapsack_fixed
+    if args.dp_knapsack:
+        KNAPSACK = knapsack_dp
+    EXCLUDE_HOST_READ = args.exclude_host_read
 
     root = f'../../figs/{args.host}'
     rows = []

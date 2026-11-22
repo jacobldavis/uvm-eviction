@@ -62,6 +62,14 @@ void run_set_chunk_state(Chunk* chunk, Settings* settings, State* states)
     KERNELS_END();
 }
 
+// profiled so the switch counts in GPU Runtime
+void run_apply_phase_policy(Chunk* chunk, Settings* settings, int phase)
+{
+    START_PROFILING(settings->kernel_profile);
+    apply_phase_policy(phase);
+    STOP_PROFILING(settings->kernel_profile, __func__);
+}
+
 void run_kernel_initialise(Chunk* chunk, Settings* settings)
 {
     kernel_initialise(settings, chunk->x, chunk->y, &(chunk->density0), 

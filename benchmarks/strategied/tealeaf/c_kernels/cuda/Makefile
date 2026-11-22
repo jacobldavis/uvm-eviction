@@ -28,6 +28,6 @@ KERNEL_OBJS := $(patsubst $(KERNELS_PATH)/%.cu, obj/$(KERNELS)/%.o, $(KERNEL_SRC
 build_kernels: $(KERNEL_OBJS)
 	@echo "Built CUDA kernels"
 
-obj/$(KERNELS)/%.o: %.cu Makefile make.deps
+obj/$(KERNELS)/%.o: %.cu Makefile make.deps accpol.h
 	$(KERNEL_COMPILER) $(KERNEL_FLAGS) -I$(KERNELS_PATH) $(OPTIONS) -c $< -o $@
 

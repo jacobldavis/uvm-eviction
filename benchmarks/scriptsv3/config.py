@@ -13,6 +13,8 @@ WARMUP_ENABLED=False
 # log kernel boundaries with tools/kernel_marker (build it first; serializes launches)
 KERNEL_MARKERS = False
 KERNEL_MARKER_LIB = f"{ROOT}/tools/kernel_marker/libkernel_marker.so"
+# allocations read on the host (by allocation index); pinning them with 'd' segfaults
+HOST_READ = {'tealeaf': [16, 17, 18, 19]}
 
 KERNEL_VERSION = "x86_64-555.42.02"
 KERNEL_VARIANT = "faults-new"

@@ -168,7 +168,7 @@ __global__ void gramschmidt_kernel3(DATA_TYPE *a, DATA_TYPE *r, DATA_TYPE *q, in
 }
 
 
-// pointers by reference: a per-kernel 'd' swaps them between launches
+// by reference since per-kernel 'd' swaps the pointers
 void gramschmidtCuda(DATA_TYPE*& A_gpu, DATA_TYPE*& R_gpu, DATA_TYPE*& Q_gpu, double timeout, AccessPolicy& acp)
 {
 	double t_start, t_end;
@@ -254,7 +254,7 @@ int main(int argc, char *argv[])
 	acp.setAllocationPolicy((void**)&A_gpu, sizeof(DATA_TYPE) * M * N, 0, argc, argv);
 	acp.setAllocationPolicy((void**)&R_gpu, sizeof(DATA_TYPE) * M * N, 1, argc, argv);
 	acp.setAllocationPolicy((void**)&Q_gpu, sizeof(DATA_TYPE) * M * N, 2, argc, argv);
-	// first kernel's placement happens before timing, like a whole-run policy
+	// place the first kernel before timing
 	acp.applyKernelPolicy(0);
 
 	

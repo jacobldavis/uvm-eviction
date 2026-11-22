@@ -1,6 +1,7 @@
 #include "comms.h"
 #include "drivers/drivers.h"
 #include "application.h"
+#include "kernel_interface.h"
 
 double calc_dt(Chunk* chunks);
 void calc_min_timestep(Chunk* chunks, double* dt, int chunks_per_task);
@@ -10,6 +11,7 @@ void solve(Chunk* chunks, Settings* settings, int tt, double* wallclock_prev);
 void diffuse(Chunk* chunks, Settings* settings)
 {
   double wallclock_prev = 0.0;
+  run_apply_phase_policy(&(chunks[0]), settings, 1);
   for(int tt = 0; tt < settings->end_step; ++tt)
   {
     solve(chunks, settings, tt, &wallclock_prev);

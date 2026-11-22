@@ -25,6 +25,8 @@ __global__ void set_chunk_state(
         const double* cell_x, const double* cell_y, double* density, double* energy0,
         double* u, State state);
 
+void apply_phase_policy(int phase);
+
 void kernel_initialise(
         Settings* settings, int x, int y, double** density0, 
         double** density, double** energy0, double** energy, double** u, 
