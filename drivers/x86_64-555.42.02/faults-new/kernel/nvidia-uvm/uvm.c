@@ -33,6 +33,7 @@
 #include "uvm_va_block.h"
 #include "uvm_tools.h"
 #include "uvm_common.h"
+#include "hpcs_mim.h"
 #include "uvm_linux_ioctl.h"
 #include "uvm_hmm.h"
 #include "uvm_mem.h"
@@ -1142,6 +1143,8 @@ inline bool uvm_hpcs_log_prefetching_enabled(void)
 }
 
 static int hpcs_major_number;
+// warn once when the ring buffer fills up (no reader running)
+bool hpcs_full_warned = false;
 static struct class* hpcs_char_class = NULL;
 static struct device* hpcs_char_device = NULL;
 static struct cdev hpcs_cdev;
@@ -1306,7 +1309,9 @@ ssize_t hpcs_fault_log_write(const struct hpcs_fault_record* record)
     rmb();
     if (unlikely(hpcs_circ_buff.readp == ((hpcs_circ_buff.writep + 1) % HPCS_BUFFER_CAP)))
     {
-        printk("%s: write buffer full\n", HPCS_DEV_NAME);
+        if (!hpcs_full_warned)
+            printk("%s: write buffer full\n", HPCS_DEV_NAME);
+        hpcs_full_warned = true;
         return -EAGAIN;
     }
     hpcs_circ_buff.records.full[hpcs_circ_buff.writep] = *record;
@@ -1321,7 +1326,9 @@ ssize_t hpcs_fault_log_write_short(const struct hpcs_fault_record_short* record)
     rmb();
     if (unlikely(hpcs_circ_buff.readp == ((hpcs_circ_buff.writep + 1) % HPCS_BUFFER_CAP)))
     {
-        printk("%s: write buffer full\n", HPCS_DEV_NAME);
+        if (!hpcs_full_warned)
+            printk("%s: write buffer full\n", HPCS_DEV_NAME);
+        hpcs_full_warned = true;
         return -EAGAIN;
     }
     hpcs_circ_buff.records.less[hpcs_circ_buff.writep] = *record;
@@ -1481,6 +1488,7 @@ static int uvm_init(void)
 
     // HPCS Lab Logging Interface
     init_hpcs();
+    hpcs_mim_init();
     return 0;
 
 error:
@@ -1523,6 +1531,7 @@ static void uvm_exit(void)
 {
     uvm_tools_exit();
     uvm_chardev_exit();
+    hpcs_mim_exit();
 
     uvm_global_exit();
 

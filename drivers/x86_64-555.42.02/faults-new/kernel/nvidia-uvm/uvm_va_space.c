@@ -39,6 +39,7 @@
 #include "uvm_va_space_mm.h"
 #include "uvm_test.h"
 #include "uvm_common.h"
+#include "hpcs_mim.h"
 #include "nv_uvm_interface.h"
 #include "nv-kthread-q.h"
 
@@ -448,6 +449,8 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_gpu_id_t gpu_id;
     uvm_processor_mask_t *retained_gpus = &va_space->registered_gpus_teardown;
     LIST_HEAD(deferred_free_list);
+
+    hpcs_mim_va_space_destroyed(va_space);
 
     // Remove the VA space from the global list before we start tearing things
     // down so other threads can't see the VA space in a partially-valid state.

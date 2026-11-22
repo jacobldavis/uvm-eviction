@@ -462,6 +462,7 @@ struct circular_buffer
     unsigned long writep;
 };
 extern struct circular_buffer hpcs_circ_buff;
+extern bool hpcs_full_warned;
 
 //ssize_t hpcs_fault_log_write_batch(const uvm_fault_service_batch_context_t* batch_context)
 ssize_t hpcs_fault_log_write(const struct hpcs_fault_record* record);

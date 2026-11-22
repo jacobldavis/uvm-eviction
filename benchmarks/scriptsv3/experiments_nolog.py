@@ -46,7 +46,7 @@ def install_module(path):
     #sh.sudo("make", "modules_install", "-j")
     os.chdir(oldpwd)
 
-kernel_arg_dict={"uvm_perf_prefetch_enable": "nopf","uvm_perf_access_counter_batch_count": "", "uvm_perf_access_counter_granularity": "gran", "uvm_perf_access_counter_threshold": "thold", "uvm_perf_access_counter_mimc_migration_enable": "mimc", "uvm_perf_access_counter_momc_migration_enable": "momc", "uvm_perf_prefetch_threshold":"thold"}
+kernel_arg_dict={"uvm_perf_prefetch_enable": "nopf","uvm_perf_access_counter_batch_count": "", "uvm_perf_access_counter_granularity": "gran", "uvm_perf_access_counter_threshold": "thold", "uvm_perf_access_counter_mimc_migration_enable": "mimc", "uvm_perf_access_counter_momc_migration_enable": "momc", "uvm_perf_prefetch_threshold":"thold", "hpcs_online_mim": "omim", "hpcs_mim_window": "win", "hpcs_mim_min_mb": "minmb", "hpcs_mim_stable": "stable", "hpcs_log_short": "", "hpcs_log_prefetching": "", "hpcs_log_evictions": ""}
 def kernel_args_string(kernel_args):
     if len(kernel_args.keys()) == 0:
         return ""

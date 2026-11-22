@@ -20,6 +20,9 @@ KERNELS = {
     'ATAX': {'atax_kernel1': 0, 'atax_kernel2': 1},
     'BICG': {'bicg_kernel1': 0, 'bicg_kernel2': 1},
     'MVT': {'mvt_kernel1': 0, 'mvt_kernel2': 1},
+    # whole-run comparisons only
+    'cg': {},
+    'bfs-worst': {},
     # phase 0: setup, phase 1: timestep loop; zero_buffer runs before any policy is set
     'tealeaf': {'zero_buffer': None, 'set_chunk': 0, '': 1},
 }
@@ -69,11 +72,11 @@ def mim_policies(labels, app, psize, n_allocs, n_kernels, host):
     return app_policy, ':'.join(per_kernel) + (':' if n_kernels == 1 else '')
 
 
-def load_times(app):
+def load_times(app, tags=None):
     # reads the .data directly: perf_data2csv.py records a timeout as the limit time
     times = {}
     # per-kernel runs from the old file predate the 'd' fix
-    for tag, keep_per_kernel in [('perkernel', False), ('perkernel2', True)]:
+    for tag, keep_per_kernel in tags or [('perkernel', False), ('perkernel2', True)]:
         path = f'../../benchmarks/strategied/{app}/{app.lower()}_{tag}_numa_pref.data'
         if os.path.exists(path):
             load_blocks(open(path).read(), keep_per_kernel, times)
@@ -107,6 +110,8 @@ def main():
     parser.add_argument('--psizes', nargs='+', default=['100', '125'])
     parser.add_argument('--host', default=socket.gethostname())
     parser.add_argument('-o', '--output', default='perkernel_compare')
+    parser.add_argument('--online-tag', default=None, help="tag of in-driver online MIM runs (e.g. onlinemim)")
+    parser.add_argument('--online-off-tag', default=None, help="tag of the same driver with hpcs_online_mim=0")
     args = parser.parse_args()
 
     labels = pd.read_csv(args.labels_csv)
@@ -139,6 +144,14 @@ def main():
             row = {'app': app, 'psize': psize, 'runs': sum(len(r) for r in runs.values()),
                    'baseline_s': round(t['m' * n_allocs], 1), 'app_opt': app_opt, 'app_opt_s': round(whole[app_opt], 1),
                    'mim_app': mim_app, 'mim_app_s': timing(mim_app) if mim_app else None}
+            # online runs: the driver does the placement on top of the given policy (all-m unless only one was run)
+            for column, tag in (('online', args.online_tag), ('online_off', args.online_off_tag)):
+                if tag:
+                    online = {p: r for (ps, p), r in load_times(app, [(tag, True)]).items() if ps == int(psize)}
+                    policy = 'm' * n_allocs if 'm' * n_allocs in online or len(online) != 1 else next(iter(online))
+                    runs = online.get(policy)
+                    row[column] = policy
+                    row[column + '_s'] = (round(summarize(runs), 1) if summarize(runs) else 'timeout') if runs else 'not run'
             if control:
                 # control: "xyz:" should time the same as "xyz"
                 diffs = [abs(t[p] - t[p + ':']) / t[p] for p in whole if t.get(p + ':') is not None]

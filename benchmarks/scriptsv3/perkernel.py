@@ -16,6 +16,8 @@ APPS = {
     'sgemm':    {'allocs': 3, 'kernels': [{0, 1, 2}], 'switch_d': True, 'control': True},
     # setup and timestep phases, --policies only (host-read allocations are in config.HOST_READ)
     'tealeaf':  {'allocs': 20, 'policies_only': True},
+    'cg':       {'allocs': 9, 'policies_only': True},
+    'bfs-worst': {'allocs': 3, 'policies_only': True},
     'FDTD-2D':  {'allocs': 3, 'policies_only': True},
     '3MM':      {'allocs': 7, 'policies_only': True},
     # both kernels read the matrix (allocation 0), one by row and one by column; MVT only registers the matrix
@@ -25,6 +27,7 @@ APPS = {
 }
 TIMEOUT_FACTOR = 1.25
 PERF_TAG = 'perkernel2'
+DEFAULT_TAG = PERF_TAG
 
 
 def whole_run_policies(app, letters):
@@ -70,7 +73,9 @@ def search_space(app, letters, probes):
 
 def data_blocks(app):
     # per-kernel runs in the old file predate the 'd' fix, so only its whole-run runs are used
-    for tag, keep_per_kernel in [('perkernel', False), (PERF_TAG, True)]:
+    # the old file only goes with the default tag
+    tags = [('perkernel', False), (PERF_TAG, True)] if PERF_TAG == DEFAULT_TAG else [(PERF_TAG, True)]
+    for tag, keep_per_kernel in tags:
         path = f'{config.BENCHDIR}/strategied/{app}/{app.lower()}_{tag}_numa_pref.data'
         if not os.path.exists(path):
             continue
@@ -94,17 +99,23 @@ def load_results(app):
 
 
 def main():
+    global PERF_TAG
     parser = argparse.ArgumentParser()
     parser.add_argument('--apps', nargs='+', default=list(APPS))
     parser.add_argument('--psizes', nargs='+', default=['100', '125'])
     parser.add_argument('--policies', nargs='+', help="run only these policies (e.g. MIM labels), plus the all-m baseline")
     parser.add_argument('--plan', action='store_true',
                         help="print letters and runs left from results on disk, without running anything")
+    parser.add_argument('--driver', default='vanilla', help="driver variant to load (e.g. faults-new)")
+    parser.add_argument('--driver-arg', action='append', default=[], help="module parameter key=value, repeatable")
+    parser.add_argument('--tag', default=DEFAULT_TAG, help="results file tag; use a new one per driver setup")
     parser.add_argument('--skip-baseline', action='store_true',
                         help="with --policies: don't rerun the all-m baseline; runs are cut at TIMEOUT instead")
     args = parser.parse_args()
 
+    PERF_TAG = args.tag
     os.environ['PERF_TAG'] = PERF_TAG
+    driver_args = dict(kv.split('=', 1) for kv in args.driver_arg)
     limit = float(os.environ['TIMEOUT'])
     for app in args.apps:
         if APPS[app].get('policies_only') and not args.policies:
@@ -113,7 +124,7 @@ def main():
         n = APPS[app]['allocs']
         baseline = 'm' * n
         exp = Experiment(app, 'run_numa.sh', f'{config.BENCHDIR}/strategied/{app}/', args.psizes, [], app,
-                         config.KERNEL_VERSION, 'vanilla', {})
+                         config.KERNEL_VERSION, args.driver, driver_args)
         for psize in args.psizes:
             psize_gb = str(int(int(psize) * config.VRAM_SIZE / 100))
             results = load_results(app)

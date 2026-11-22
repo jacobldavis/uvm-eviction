@@ -1,6 +1,6 @@
 #!/bin/bash -xe
 
-logbase=cg
+logbase=cg${PERF_TAG:+_$PERF_TAG}
 exe=./conjugateGradientUM
 cmd="$exe -s=$1 ${@:2}"
 out="$exe $1 ${@:2}"

@@ -1,5 +1,5 @@
 #!/bin/bash
-logbase=bfs-worst
+logbase=bfs-worst${PERF_TAG:+_$PERF_TAG}
 sizes=$(python3 genSizes.py $1)
 exe=./bfs-worst
 cmd="$exe $sizes ${@:2}"

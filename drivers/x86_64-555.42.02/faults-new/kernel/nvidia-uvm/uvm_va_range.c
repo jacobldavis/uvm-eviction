@@ -22,6 +22,7 @@
 *******************************************************************************/
 
 #include "uvm_common.h"
+#include "hpcs_mim.h"
 #include "uvm_linux.h"
 #include "uvm_types.h"
 #include "uvm_api.h"
@@ -169,6 +170,8 @@ static uvm_va_range_t *uvm_va_range_alloc_managed(uvm_va_space_t *va_space, NvU6
         UVM_DBG_PRINT("Failed to allocate %zu blocks\n", uvm_va_range_num_blocks(va_range));
         goto error;
     }
+
+    hpcs_mim_range_created(va_space, va_range->node.start, uvm_va_range_size(va_range));
 
     if (uvm_hpcs_log_short_enabled())
     {
@@ -546,6 +549,7 @@ void uvm_va_range_destroy(uvm_va_range_t *va_range, struct list_head *deferred_f
             // Skip partially-created ranges with unset types
             break;
         case UVM_VA_RANGE_TYPE_MANAGED:
+            hpcs_mim_range_destroyed(va_range->va_space, va_range->node.start);
             uvm_va_range_destroy_managed(va_range);
             break;
         case UVM_VA_RANGE_TYPE_EXTERNAL:

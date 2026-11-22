@@ -30,6 +30,7 @@
 #include "uvm_gpu.h"
 #include "uvm_va_space_mm.h"
 #include "uvm_processors.h"
+#include "hpcs_mim.h"
 
 static bool uvm_is_valid_vma_range(struct mm_struct *mm, NvU64 start, NvU64 length)
 {
@@ -422,6 +423,66 @@ done:
         uvm_va_space_up_read(va_space);
 
     uvm_va_space_mm_or_current_release_unlock(va_space, mm);
+
+    return status == NV_OK ? tracker_status : status;
+}
+
+NV_STATUS hpcs_mim_apply_policy(uvm_va_space_t *va_space,
+                                NvU64 base,
+                                NvU64 length,
+                                uvm_processor_id_t gpu_id,
+                                char label)
+{
+    uvm_tracker_t local_tracker = UVM_TRACKER_INIT();
+    uvm_va_range_t *va_range;
+    uvm_va_range_t *first_va_range_to_migrate = NULL;
+    const NvU64 last_address = base + length - 1;
+    struct mm_struct *mm;
+    NV_STATUS status;
+    NV_STATUS tracker_status;
+
+    // runs on a kernel thread, so retain the va_space mm instead of current->mm; it can be NULL
+    // (no mm registered), which managed ranges don't need, like the fault path
+    mm = uvm_va_space_mm_retain_lock(va_space);
+    uvm_va_space_down_write(va_space);
+
+    if (uvm_api_range_type_check(va_space, mm, base, length) != UVM_API_RANGE_TYPE_MANAGED) {
+        status = NV_ERR_INVALID_ADDRESS;
+        goto done;
+    }
+
+    status = preferred_location_set(va_space,
+                                    mm,
+                                    base,
+                                    length,
+                                    label == 'h' ? UVM_ID_CPU : UVM_ID_INVALID,
+                                    NUMA_NO_NODE,
+                                    &first_va_range_to_migrate,
+                                    &local_tracker);
+    if (status != NV_OK)
+        goto done;
+
+    // whole allocations only, so no range needs splitting
+    uvm_for_each_managed_va_range_in_contig(va_range, va_space, base, last_address) {
+        if (va_range->node.start < base || va_range->node.end > last_address) {
+            status = NV_ERR_INVALID_ADDRESS;
+            goto done;
+        }
+        if (label == 'h') {
+            status = uvm_va_range_set_accessed_by(va_range, gpu_id, mm, &local_tracker);
+            if (status != NV_OK)
+                goto done;
+        }
+        else {
+            uvm_va_range_unset_accessed_by(va_range, gpu_id, &local_tracker);
+        }
+    }
+
+done:
+    tracker_status = uvm_tracker_wait_deinit(&local_tracker);
+
+    uvm_va_space_up_write(va_space);
+    uvm_va_space_mm_release_unlock(va_space, mm);
 
     return status == NV_OK ? tracker_status : status;
 }

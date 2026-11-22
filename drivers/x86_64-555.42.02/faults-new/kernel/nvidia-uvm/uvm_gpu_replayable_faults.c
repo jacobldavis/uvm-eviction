@@ -24,6 +24,7 @@
 #include "linux/sort.h"
 #include "nv_uvm_interface.h"
 #include "uvm_common.h"
+#include "hpcs_mim.h"
 #include "uvm_linux.h"
 #include "uvm_global.h"
 #include "uvm_gpu_replayable_faults.h"
@@ -2173,6 +2174,7 @@ static NV_STATUS service_fault_batch(uvm_gpu_t *gpu,
     ats_invalidate->tlb_batch_pending = false;
 
     hpcs_fault_log_write_batch(batch_context);
+    hpcs_mim_record_batch(gpu, batch_context);
     for (i = 0; i < batch_context->num_coalesced_faults;) {
         NvU32 block_faults;
         uvm_fault_buffer_entry_t *current_entry = batch_context->ordered_fault_cache[i];
@@ -3005,7 +3007,9 @@ ssize_t hpcs_fault_log_write_batch(const uvm_fault_service_batch_context_t* batc
     writep = hpcs_circ_buff.writep;
     if (unlikely(readp == ((writep + 1) % HPCS_BUFFER_CAP)))
     {
-        printk("%s: write buffer full\n", HPCS_DEV_NAME);
+        if (!hpcs_full_warned)
+            printk("%s: write buffer full\n", HPCS_DEV_NAME);
+        hpcs_full_warned = true;
         return -EAGAIN;
     }
     // if writep < readp, no wraparound, just length check
